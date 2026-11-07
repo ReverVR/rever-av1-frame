@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rever AV1 for the Steam Frame (PRIVATE until the user publishes it; GPL-2.0 module): the one root helper the Rever app
+# Rever AV1 for the Steam Frame (GPL-2.0-only; published source: https://github.com/ReverVR/rever-av1-frame, see the app's DOCUMENTACION/LICENCIAS/SOURCE_OFFER.md): the one root helper the Rever app
 # calls, installed once by the PC's setup assistant into /etc/rever/av1 (root-owned) with a sudo rule for these four
 # commands only (sudoers.rever-av1, as /etc/sudoers.d/zz-rever-av1). It does what the lab's av1_load.sh / av1_swap_test.sh / av1_quiet.sh did by hand on
 # 2026-11-02/03 (KB technique.frame_av1_driver AV1D-001..008):

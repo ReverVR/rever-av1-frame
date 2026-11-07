@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rever AV1 (Steam Frame, PRIVATE until published): installed once by the PC's setup assistant, which copies this folder
+# Rever AV1 (Steam Frame; GPL-2.0-only, source: https://github.com/ReverVR/rever-av1-frame): installed once by the PC's setup assistant, which copies this folder
 # to the headset and runs it with the player's password (sudo -S, the password never stored). It puts the helper in
 # /etc/rever/av1 and the module's source in /home/.rever-av1 (both root-owned: the player's account cannot change what
 # root runs), the sudo rule for the helper's four commands, and builds the module for the running kernel. Undo:

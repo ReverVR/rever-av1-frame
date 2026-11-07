@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rever AV1 (Steam Frame, PRIVATE until published): what the Rever apps ask before using our AV1 - runs as the player,
+# Rever AV1 (Steam Frame; GPL-2.0-only, source: https://github.com/ReverVR/rever-av1-frame): what the Rever apps ask before using our AV1 - runs as the player,
 # no root, changes nothing. User, 2026-11-04: "La clave de la reinstalacion del av1 nuestro es que la propia app detecte
 # un cambio de version y diga al usuario, actualiza". A SteamOS update boots the other copy of the system, whose /etc
 # (an overlay on that copy's own /var) has none of ours: the helper and its sudo rule stay behind, /home stays (KB

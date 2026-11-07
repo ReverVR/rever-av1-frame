@@ -28,8 +28,8 @@ other fails closed. Full detail in `REVER_CHANGES.md`.
 - `module/`: **GPL-2.0-only** (see `COPYING`). Every source file keeps its upstream SPDX header and copyright
   notice. `v4l2-mem2mem*.c` is GPL-2.0-or-later (Samsung), used under GPL-2.0.
 - `helper/` (the install, uninstall, switch and check scripts and the sudo rule): **GPL-2.0-only** as well, so the
-  whole folder can be copied and changed under one licence. (Three helper scripts still carry the comment
-  "PRIVATE until published" from before this publication; they are published here under GPL-2.0-only.)
+  whole folder can be copied and changed under one licence. Each script's header points back to this repository as its
+  source.
 
 ## Where the code comes from
 
@@ -104,9 +104,8 @@ se niega. Detalle en `REVER_CHANGES.md`.
 - `module/`: **GPL-2.0-only** (ver `COPYING`). Cada archivo conserva su cabecera SPDX y su aviso de copyright
   originales. `v4l2-mem2mem*.c` es GPL-2.0-or-later (Samsung), usado bajo GPL-2.0.
 - `helper/` (los scripts de instalar, desinstalar, activar y comprobar y la regla de sudo): también
-  **GPL-2.0-only**, para que toda la carpeta se pueda copiar y modificar con una sola licencia. (Tres scripts del
-  ayudante aún llevan el comentario "PRIVATE until published" de antes de esta publicación; se publican aquí con
-  GPL-2.0-only.)
+  **GPL-2.0-only**, para que toda la carpeta se pueda copiar y modificar con una sola licencia. La cabecera de cada
+  script apunta a este repositorio como su fuente.
 
 ### De dónde viene el código
 
