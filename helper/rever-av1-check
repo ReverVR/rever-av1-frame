@@ -1,0 +1,41 @@
+#!/bin/sh
+# Rever AV1 (Steam Frame, PRIVATE until published): what the Rever apps ask before using our AV1 - runs as the player,
+# no root, changes nothing. User, 2026-11-04: "La clave de la reinstalacion del av1 nuestro es que la propia app detecte
+# un cambio de version y diga al usuario, actualiza". A SteamOS update boots the other copy of the system, whose /etc
+# (an overlay on that copy's own /var) has none of ours: the helper and its sudo rule stay behind, /home stays (KB
+# AV1D-011 / AV1D-012). So the installer leaves a stamp in /home and this compares it with the system now:
+#   state=ok      the helper, its sudo rule and a module for the running kernel: AV1 can be used
+#   state=update  installed before, missing something now (SteamOS changed): the app says "Actualiza" and runs the
+#                 installer again - the player's password once; it rebuilds the module for the new kernel
+#   state=absent  never installed
+# The app adds what only it knows: whether its own module source was checked on this kernel (if not: Valve's driver
+# until Rever ships one).
+STATE=/home/.rever-av1
+HELPER=/etc/rever/av1/rever-av1
+KERNEL=$(uname -r)
+. /etc/os-release 2>/dev/null
+echo "kernel=$KERNEL"
+echo "steamos=${VERSION_ID:-?} ${BUILD_ID:-?}"
+if [ -f "$STATE/installed" ]; then
+    echo "installed=$(cat "$STATE/installed")"
+elif [ -d "$STATE/src" ]; then
+    echo "installed=unknown"  # an install from before the stamp (2026-11-03)
+else
+    echo "installed=none"
+    echo "state=absent"
+    exit 0
+fi
+helper=no
+[ -x "$HELPER" ] && helper=yes
+rule=no
+sudo -n -l "$HELPER" status >/dev/null 2>&1 && rule=yes
+module=no
+[ -f "$STATE/modules/$KERNEL/steam-frame-av1-lab.ko" ] && module=yes
+echo "helper=$helper"
+echo "rule=$rule"
+echo "module=$module"
+if [ "$helper$rule$module" = "yesyesyes" ]; then
+    echo "state=ok"
+else
+    echo "state=update"
+fi

@@ -1,0 +1,4 @@
+# Rever AV1 (Steam Frame): the Rever app may run its root helper's four commands without a password - nothing else.
+# Installed as /etc/sudoers.d/zz-rever-av1 (0440, checked with visudo -cf first): after SteamOS' "wheel" file, as
+# sudo takes the last matching rule.
+steamos ALL=(root) NOPASSWD: /etc/rever/av1/rever-av1 on, /etc/rever/av1/rever-av1 off, /etc/rever/av1/rever-av1 status, /etc/rever/av1/rever-av1 build

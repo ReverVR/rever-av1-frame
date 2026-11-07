@@ -1,0 +1,344 @@
+{
+  "repository": "https://github.com/torvalds/linux",
+  "commit": "8d3ae59288f1e7d58d76558a6ee96d533bc5019f",
+  "tag": "v7.2",
+  "path": "drivers/media/platform/qcom/iris",
+  "files": [
+    {
+      "file": "Kconfig",
+      "sha256": "52f43ebb90a4b8648f39f7681398f3c4dc4242359288336524650a2d1cd617f4",
+      "git_blob_sha": "af78a1775937b02fef960fdc357b9338fa63afdf"
+    },
+    {
+      "file": "Makefile",
+      "sha256": "8c78e9b05c703ebb633d5159ebb427ab359e14e4b67cdec15aeda234e09f90cc",
+      "git_blob_sha": "48e415cbc4390bc596f6239fefa2a2ad2cd3a2bb"
+    },
+    {
+      "file": "iris_buffer.c",
+      "sha256": "fd6cd1fd134c5374d7ce74629eacc612a2b3c37619c2bb0b1381834c461a0746",
+      "git_blob_sha": "246ad0abbac3510113e1f760406c81b1461377a3"
+    },
+    {
+      "file": "iris_buffer.h",
+      "sha256": "83d2a1f2e92a2c4f469b4740697f1a992270c8a6ec9b866349f94059a79f2fdc",
+      "git_blob_sha": "75bb767761824c4c02e0df9b765896cc093be333"
+    },
+    {
+      "file": "iris_common.c",
+      "sha256": "b3a29dfdda4a925074657af6097a5444d851f168dd197b16f26060956fdcfb1d",
+      "git_blob_sha": "25836561bcf3eece39e846e596bfe2dec2c59f10"
+    },
+    {
+      "file": "iris_common.h",
+      "sha256": "0db37b6644ddf652f9618f2402eccda47b05517c3f37ba588220edc43d727c27",
+      "git_blob_sha": "b2a27b781c9aceb60ff43eff855d759ea95e23d9"
+    },
+    {
+      "file": "iris_core.c",
+      "sha256": "3f735e1535155bb79786daa92b1e12c85f8167d96fc6f6745cc71a5e3ff6d361",
+      "git_blob_sha": "52bf56e517f91e98569ee02986183971266e1c76"
+    },
+    {
+      "file": "iris_core.h",
+      "sha256": "8bbb221729fe9211673a0b744b2494488b767ed558066aad26eca58f15132bab",
+      "git_blob_sha": "24da60448cf24820af7947b85eb7208555ab7786"
+    },
+    {
+      "file": "iris_ctrls.c",
+      "sha256": "f106ad42bc6c04dfdab0fdea5c43a0c13292ea1ef2b4066254d5a7ddb79bbd62",
+      "git_blob_sha": "10e33b8a73f60759c4f1cb17b5c95897f0e1468f"
+    },
+    {
+      "file": "iris_ctrls.h",
+      "sha256": "3d8becb95696abdf5761d491ebd6c1d8e80750829edcc93c200081bc9c2e4051",
+      "git_blob_sha": "3c462ec9190be8935176b290588f224fe4f144a4"
+    },
+    {
+      "file": "iris_firmware.c",
+      "sha256": "7d4df7ede4874adaa454e0892f115ee8f43057fef6eba77bc25d232b3afefeef",
+      "git_blob_sha": "1a476146d7580849d7b68c7c15dd7f82f89a680b"
+    },
+    {
+      "file": "iris_firmware.h",
+      "sha256": "31779b314ec33390903dddf3c268dba749d3a6b964556edb5b7b4549a5d1f00f",
+      "git_blob_sha": "e833ecd34887163f74926c66518ec2a0206808e4"
+    },
+    {
+      "file": "iris_hfi_common.c",
+      "sha256": "0bdceedd006deb40ea6ff78772555d89094399e39c78d14d950c606c57d1ae62",
+      "git_blob_sha": "8769ec61f11769e004945063381d9baddb302b06"
+    },
+    {
+      "file": "iris_hfi_common.h",
+      "sha256": "1eae1ee704abcf82440bff46b9521e78ece7d2429c85f1bace1883583d23726e",
+      "git_blob_sha": "a27447eb2519962cb958b0e330a6d018310c3450"
+    },
+    {
+      "file": "iris_hfi_gen1.c",
+      "sha256": "23d60f129186930dc46753195adeee932c03d5bb8dee001a9720210ad738d64d",
+      "git_blob_sha": "ca1545d28b5310d8c45a905287dcb69f6184d9cc"
+    },
+    {
+      "file": "iris_hfi_gen1.h",
+      "sha256": "dd844b89d906e118e40d982dc5666bcc7e7d2b369f691b491e857da440d45e5d",
+      "git_blob_sha": "c37adf65055a5cf7f62aa551834f9bc733f001d9"
+    },
+    {
+      "file": "iris_hfi_gen1_command.c",
+      "sha256": "380cbdeca5fd2d583fe30e78cc907774a5db992d530967de1d11d7e035012207",
+      "git_blob_sha": "7674b47ad6c49adfaf16b444c8ec7295b230a529"
+    },
+    {
+      "file": "iris_hfi_gen1_defines.h",
+      "sha256": "cc31f7c3dbf42b25f7143332e7ec193a4d0e0264963382ebdd38ff80411cc794",
+      "git_blob_sha": "0e4dee19238464a9671a94eaab8eeda2d7f7ca9f"
+    },
+    {
+      "file": "iris_hfi_gen1_response.c",
+      "sha256": "fc631eecdafed4f6027a1f7c6a03438328805508a8d031bd81299d9838ea08dc",
+      "git_blob_sha": "bfd7495bf44f064091afb3245ec53cd18d323068"
+    },
+    {
+      "file": "iris_hfi_gen2.c",
+      "sha256": "328288ffe54c7172d2f20a425557f4ee6c6c09301063f6001a5601fd274b832f",
+      "git_blob_sha": "acc0ed8adda1ae726c94ab6346b0b4b2b3db1d7b"
+    },
+    {
+      "file": "iris_hfi_gen2.h",
+      "sha256": "bb51a7a31c697ac017c57b4005f9552b0d6c8eb347b6f5cbc2f1c4defc368dcc",
+      "git_blob_sha": "21ab58e0aa840eae3f99d37fbad29e306cef52db"
+    },
+    {
+      "file": "iris_hfi_gen2_command.c",
+      "sha256": "deaceb3b610c00e18ceac5a56f8ebffdcfb0b20d1a3475d573f6e8387795e522",
+      "git_blob_sha": "ca2954f8bd3ad539b057eb152d5ead9a6e421670"
+    },
+    {
+      "file": "iris_hfi_gen2_defines.h",
+      "sha256": "a4187b72b46cc75ae326e2f868618543e2cb9860c12764934e0e2e44c7b82ef6",
+      "git_blob_sha": "776b21cd11b2cd5555cbced8e438cb32e87a539c"
+    },
+    {
+      "file": "iris_hfi_gen2_packet.c",
+      "sha256": "d5c356b55c76d75d2f1d69d873312aaa18282e61f2052c38a3ecdb653abba5fc",
+      "git_blob_sha": "0d05dd2afc07d830cc8502ab5f28001312991ba8"
+    },
+    {
+      "file": "iris_hfi_gen2_packet.h",
+      "sha256": "94f7e501fe670911a8d6f73f4102dad5c6910aa540ea7ac2548dfe8402f3d4c0",
+      "git_blob_sha": "25b9582349ca1a0ce6efc0b146a3abb798485c45"
+    },
+    {
+      "file": "iris_hfi_gen2_response.c",
+      "sha256": "2149d293f4a93ac717e660a7f69de40a3e0d1b884c6d589859619568a53a2218",
+      "git_blob_sha": "25162ae71357482b065fe8e3b0a0664138447c4c"
+    },
+    {
+      "file": "iris_hfi_queue.c",
+      "sha256": "42b1687d106f61ba48e05552715de41ca6994aee6ca80316bc25707ef7001ef8",
+      "git_blob_sha": "bf6db23b53e2106c08f2139b643f8626af8bc40a"
+    },
+    {
+      "file": "iris_hfi_queue.h",
+      "sha256": "a4b2586de5f9f1fecc8f5217cd0ef3e57412d33067df05c88240870a2113694d",
+      "git_blob_sha": "2174fc5ce6186898323f347f4dd932057698aed2"
+    },
+    {
+      "file": "iris_instance.h",
+      "sha256": "5533da0e27a2026093ac25993764b45982dff922886872542078b132b0c6d795",
+      "git_blob_sha": "a770331d167571d83f536f0699454e6b9d8a9893"
+    },
+    {
+      "file": "iris_platform_common.h",
+      "sha256": "6fcd0c3f7c0cd4b535a4a9b078a4c4ef3cb205271a2b92d64fbc340ee82f05b0",
+      "git_blob_sha": "c9256f2323dc4521f9eacaeffb0fc08a180de3ff"
+    },
+    {
+      "file": "iris_platform_qcs8300.h",
+      "sha256": "629e0fe6d90f17fbc8be5f7ba92c483811d58e88df091b3880a2a2e79d527cbd",
+      "git_blob_sha": "3cfecae80d1e92b2a14089f18c7c63d60896a422"
+    },
+    {
+      "file": "iris_platform_sc7280.h",
+      "sha256": "ba01f9564dc30dcce1b53d51ebf6ed9176a852fae9dcf8f490f5927cd2e42796",
+      "git_blob_sha": "0ec8f334df670c3c1548a5ee3b8907b333e34db3"
+    },
+    {
+      "file": "iris_platform_sm8250.h",
+      "sha256": "a3314e2a6adef8e4c5426a052f50a30e24cf8dc6387c967875893abfb89aeda1",
+      "git_blob_sha": "50306043eb8ecd47310900520770565c8314e91b"
+    },
+    {
+      "file": "iris_platform_sm8550.h",
+      "sha256": "85e1532d263787b904b99c02a5f663f8413b2262f143c809cbdab563d1e90a6d",
+      "git_blob_sha": "3c9dae995bb248f66e200075021b3231b456300a"
+    },
+    {
+      "file": "iris_platform_sm8650.h",
+      "sha256": "a0b1eac96aa9bebe99deef54a4e8a2b2f6fea1ce7011778bebe8a179f58b92d9",
+      "git_blob_sha": "75e9d572e788de043a56cf85a4cb634bd02226b9"
+    },
+    {
+      "file": "iris_platform_sm8750.h",
+      "sha256": "a11b86a167706c276c50b06eee699989009851bcc92993b19dd4bcf249cdc93a",
+      "git_blob_sha": "719056656a5baf48a7bced634d2582629333cf5c"
+    },
+    {
+      "file": "iris_platform_vpu2.c",
+      "sha256": "13e89955284886616c9bd9dcc190036e23d713a7f78a00417b231e64581d60f5",
+      "git_blob_sha": "6e06a32822bbbbd0a3cf1d2ce658f841ffb31b8e"
+    },
+    {
+      "file": "iris_platform_vpu3x.c",
+      "sha256": "0d983ecdf084732b23f066844accc8a2380c48ae76e24c9f172a0daf7a4d9e16",
+      "git_blob_sha": "2c63adbc55791d5253b14096f9c3ce515f934a4e"
+    },
+    {
+      "file": "iris_platform_x1p42100.h",
+      "sha256": "fff9993759e6a8a8d1f388b3bf64932bff72e9e43dfc8fe86320f278f0d84afc",
+      "git_blob_sha": "d89acfbc1233dad0692f6c13c3fc22b10e5bdd80"
+    },
+    {
+      "file": "iris_power.c",
+      "sha256": "f05ca79ef7950c5ff4c56b888f88239dc587cd6d4ecfca28dc4475e8d23205b3",
+      "git_blob_sha": "91aa21d4070ebcebbe2ed127a03e5e49b9a2bd5c"
+    },
+    {
+      "file": "iris_power.h",
+      "sha256": "ef223b142fd4260490a99d8aa035e0ac321cb3015ffad7dda78092821ac721c6",
+      "git_blob_sha": "55212660e72df182d1f4780734d0bb35b5a5ec82"
+    },
+    {
+      "file": "iris_probe.c",
+      "sha256": "69b263f17fffd206b2f56cddf0895c024690f7bb52009c57d481c7c158da9f12",
+      "git_blob_sha": "c2dcb50a27824d45d5fbc8b9e22591decbe2a23b"
+    },
+    {
+      "file": "iris_resources.c",
+      "sha256": "6e7f6bc2846924b740916c0cb6c95e9b1713d2da192de355fc8ca426ebe53615",
+      "git_blob_sha": "773f6548370a257b8ae7332242544266cbbd61a9"
+    },
+    {
+      "file": "iris_resources.h",
+      "sha256": "eb88ef3b39a2144b59f815fac5acb1b8a403eab4d15d78ababb0b4afcf4276cb",
+      "git_blob_sha": "6bfbd2dc6db095ec05e53c894e048285f82446c6"
+    },
+    {
+      "file": "iris_state.c",
+      "sha256": "02c1c435c1e5e60ba3ea8084c146426cd40fc5cd456cb4c26f3af9577ecfd564",
+      "git_blob_sha": "d14472414750dc7edc4834f32a51f2c5adc3762e"
+    },
+    {
+      "file": "iris_state.h",
+      "sha256": "b3d02c627ceee158882d1faaa410b4185a4a89521ffbfcd56f187e8740a341e6",
+      "git_blob_sha": "b09fa54cf17eeee0c9ae254588964ad959c82c80"
+    },
+    {
+      "file": "iris_utils.c",
+      "sha256": "892908b9902b1e1e58001947ceacc05219c8e59741840924cc66893874b4b80e",
+      "git_blob_sha": "ba5c8dc1280c2e147cd33498b69a815cf7c75683"
+    },
+    {
+      "file": "iris_utils.h",
+      "sha256": "9975186fd6197d855017992093141ccfb295e6a66025529f2415400393080664",
+      "git_blob_sha": "228a5f963812b4546d21c13dcf25a6d08ca7883d"
+    },
+    {
+      "file": "iris_vb2.c",
+      "sha256": "3c6ec89d26c8294a9f8887c00e828e27d104c0e1c2a7f81332111057de3518f4",
+      "git_blob_sha": "a2ea2d67f60d05bc0dceb097f94a4f80199b0618"
+    },
+    {
+      "file": "iris_vb2.h",
+      "sha256": "f50ca9a6feef8d44efe1bc315da1445ce82dee1d0daca9d808fb9c2daf2ddf54",
+      "git_blob_sha": "a88565fdd3e4c3295f030d4a8be268a0cf90cead"
+    },
+    {
+      "file": "iris_vdec.c",
+      "sha256": "adcd223c9f2a59271778a7f7d830750c2a462c03ac65ded4569761fcccd8cfb6",
+      "git_blob_sha": "9e228b70420e4fefc302c5aaaffa5822b6111ac9"
+    },
+    {
+      "file": "iris_vdec.h",
+      "sha256": "ff3d023249186f4d44bec7ef82db010dab4c9210050d5547bd1b9df0cf684cf9",
+      "git_blob_sha": "5123d2a340e15f1642ceb943f5cadbe021e647fa"
+    },
+    {
+      "file": "iris_venc.c",
+      "sha256": "9823dae682f994c082aefc8f2acb53548c5a9cbb143d50f51a2b53a8b712c818",
+      "git_blob_sha": "a945992f63aa8a0c40b8d6bc473d0bc90270e6cd"
+    },
+    {
+      "file": "iris_venc.h",
+      "sha256": "e0799dbed51c703e6f2cee082eb1389e698d723e082f328ae87b8837f3ff02bf",
+      "git_blob_sha": "00c1716b2747c7e840c2a3317800d83663744bf0"
+    },
+    {
+      "file": "iris_vidc.c",
+      "sha256": "4916e948bc8e170d8a89bab9b5852e4303a41d3852b6a7d7522ccab7565a6c1d",
+      "git_blob_sha": "14d63dc76c9bacbed3533147cd5325410f9c94bd"
+    },
+    {
+      "file": "iris_vidc.h",
+      "sha256": "897ba968ecd07231f2d68b57acf10b29c00c72b5b73a766f9642f2d2632d6250",
+      "git_blob_sha": "a26054ff55b5b1dcc52859263f3d5e08c0e8b637"
+    },
+    {
+      "file": "iris_vpu2.c",
+      "sha256": "a30775fd100a322eb0f2d4b8165307c413ea4383a4024f170aed8061785b792e",
+      "git_blob_sha": "b8714dcbad10af369bde11f8c634a0d939aa9685"
+    },
+    {
+      "file": "iris_vpu3x.c",
+      "sha256": "f0c17bc41ec68daa070a7249af54e387ff3c4f24e3a4d2282c2c96761498b68a",
+      "git_blob_sha": "3dad47be78b58f6cd5ed6f333b3376571a04dbf0"
+    },
+    {
+      "file": "iris_vpu4x.c",
+      "sha256": "b53c1a9339ebd2c9b5414aae88635c77457f242aa018d8e4a504cda8ae63c66f",
+      "git_blob_sha": "02e100a4045fced33d7a3545b632cc5f0955233f"
+    },
+    {
+      "file": "iris_vpu_buffer.c",
+      "sha256": "cdf009272e2977f8d26545197a3c1e7e79444321a3acf62032525ec15076fb6f",
+      "git_blob_sha": "fb6f1016415e2022b580cc5856c688465105d0be"
+    },
+    {
+      "file": "iris_vpu_buffer.h",
+      "sha256": "8661857988ba99bbc52af2d58a9a31e59ae803a025bc8ec0815148db4a6d70d9",
+      "git_blob_sha": "8c0d6b7b5de85f7d7aaa8fc36218e8d095419569"
+    },
+    {
+      "file": "iris_vpu_common.c",
+      "sha256": "a8da33fdd865971cf5a4c25036e174ad8337ebd17f2df2e31459b3466becd448",
+      "git_blob_sha": "ab41da1f47c820f059621e795e54fc7c7ff7c776"
+    },
+    {
+      "file": "iris_vpu_common.h",
+      "sha256": "86c3595dcc8a84c326ee957cf1f36cae5627cce0aec662327dcc894ae2232387",
+      "git_blob_sha": "09799a375c1426d808ab5ea4fdfcac3a203e15b3"
+    },
+    {
+      "file": "iris_vpu_register_defines.h",
+      "sha256": "bb38f4f66061349f93637dccb14c9b4436edb1a373d0a934b49ac80e7e386314",
+      "git_blob_sha": "72168b9ffa7385d53d7190265d1c0922ee04a656"
+    }
+  ],
+  "dependency": {
+    "url": "https://raw.githubusercontent.com/torvalds/linux/v6.18/drivers/media/v4l2-core/v4l2-mem2mem.c",
+    "sha256": "0b3d3509aa5c11228e4aa48745db8e27bc599687857c07cea333c93847947b8f"
+  },
+  "valve_kernel_commit": "83913f38113c",
+  "matching_valve_source": false,
+  "default_probe_enabled": false,
+  "firmware": "qcom/vpu/vpu33_4v.mbn",
+  "frame_video_firmware_path": true,
+  "decoder_power_vote_fps": "measured (v7.2); the interconnect vote patched to it",
+  "upstream_tag": "v7.2",
+  "ten_bit_capture": [
+    "P010",
+    "QC10C"
+  ],
+  "loaded": false
+}

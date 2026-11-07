@@ -1,0 +1,299 @@
+--- a/iris_buffer.c
++++ b/iris_buffer.c
+@@ -535,7 +535,7 @@
+ 	if (!buffers->size)
+ 		return 0;
+ 
+-	buffer = kzalloc_obj(*buffer);
++	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+ 	if (!buffer)
+ 		return -ENOMEM;
+ 
+--- a/iris_core.h
++++ b/iris_core.h
+@@ -80,6 +80,9 @@
+  */
+ 
+ struct iris_core {
++	struct device *frame_fw_device;
++	struct iommu_domain *frame_fw_domain;
++	size_t frame_fw_mapped;
+ 	struct device				*dev;
+ 	void __iomem				*reg_base;
+ 	int					irq;
+--- a/iris_firmware.c
++++ b/iris_firmware.c
+@@ -11,6 +11,7 @@
+ 
+ #include "iris_core.h"
+ #include "iris_firmware.h"
++#include "frame_firmware_no_tz.h"
+ 
+ #define IRIS_PAS_ID				9
+ 
+@@ -53,8 +54,15 @@
+ 		goto err_release_fw;
+ 	}
+ 
+-	ret = qcom_mdt_load(dev, firmware, fw_name,
+-			    IRIS_PAS_ID, mem_virt, mem_phys, res_size, NULL);
++	if (frame_fw_uses_no_tz(core)) {
++		ret = qcom_mdt_load_no_init(dev, firmware, fw_name,
++					    mem_virt, mem_phys, res_size, NULL);
++		if (!ret)
++			ret = frame_fw_no_tz_boot(core, mem_phys, res_size);
++	} else {
++		ret = qcom_mdt_load(dev, firmware, fw_name,
++				    IRIS_PAS_ID, mem_virt, mem_phys, res_size, NULL);
++	}
+ 
+ 	memunmap(mem_virt);
+ err_release_fw:
+@@ -73,6 +81,16 @@
+ 					    &fwpath);
+ 	if (ret)
+ 		fwpath = core->iris_firmware_desc->fwname;
++
++	if (frame_fw_uses_no_tz(core)) {
++		ret = frame_fw_no_tz_init(core);
++		if (ret)
++			return ret;
++		ret = iris_load_fw_to_memory(core, fwpath);
++		if (ret)
++			frame_fw_no_tz_deinit(core);
++		return ret;
++	}
+ 
+ 	ret = iris_load_fw_to_memory(core, fwpath);
+ 	if (ret) {
+@@ -104,10 +122,14 @@
+ 
+ int iris_fw_unload(struct iris_core *core)
+ {
++	if (frame_fw_uses_no_tz(core))
++		return frame_fw_no_tz_unload(core);
+ 	return qcom_scm_pas_shutdown(IRIS_PAS_ID);
+ }
+ 
+ int iris_set_hw_state(struct iris_core *core, bool resume)
+ {
++	if (frame_fw_uses_no_tz(core))
++		return frame_fw_no_tz_state(core, resume);
+ 	return qcom_scm_set_remote_state(resume, 0);
+ }
+--- a/iris_hfi_gen1_command.c
++++ b/iris_hfi_gen1_command.c
+@@ -1134,7 +1134,7 @@
+ {
+ 	struct iris_inst *out;
+ 
+-	out = kzalloc_obj(*out);
++	out = kzalloc(sizeof(*out), GFP_KERNEL);
+ 	if (!out)
+ 		return NULL;
+ 
+--- a/iris_hfi_gen2_command.c
++++ b/iris_hfi_gen2_command.c
+@@ -1380,7 +1380,7 @@
+ 	struct iris_inst_hfi_gen2 *out;
+ 
+ 	/* The allocation is intentionally larger than struct iris_inst. */
+-	out = kzalloc_obj(*out);
++	out = kzalloc(sizeof(*out), GFP_KERNEL);
+ 	if (!out)
+ 		return NULL;
+ 
+--- a/iris_platform_vpu3x.c
++++ b/iris_platform_vpu3x.c
+@@ -39,7 +39,7 @@
+ static const struct iris_firmware_desc iris_vpu33_p4_gen2_desc = {
+ 	.firmware_data = &iris_hfi_gen2_data,
+ 	.get_vpu_buffer_size = iris_vpu33_buf_size,
+-	.fwname = "qcom/vpu/vpu33_p4.mbn",
++	.fwname = "qcom/vpu/vpu33_4v.mbn",
+ };
+ 
+ static const struct iris_firmware_desc iris_vpu35_p4_gen2_desc = {
+--- a/iris_power.c
++++ b/iris_power.c
+@@ -68,7 +68,8 @@
+ 
+ 	vote_data->width = inp_f->fmt.pix_mp.width;
+ 	vote_data->height = inp_f->fmt.pix_mp.height;
+-	vote_data->fps = DEFAULT_FPS;
++	vote_data->fps = inst->domain == DECODER ?
++		max(inst->frame_rate, inst->operating_rate) : DEFAULT_FPS;
+ 
+ 	inst->power.icc_bw = iris_calc_bw(inst, vote_data);
+ 
+--- a/iris_probe.c
++++ b/iris_probe.c
+@@ -6,6 +6,7 @@
+ #include <linux/clk.h>
+ #include <linux/interconnect.h>
+ #include <linux/module.h>
++#include <linux/utsname.h>
+ #include <linux/pm_domain.h>
+ #include <linux/pm_opp.h>
+ #include <linux/pm_runtime.h>
+@@ -13,6 +14,7 @@
+ #include <linux/soc/qcom/ubwc.h>
+ 
+ #include "iris_core.h"
++#include "frame_firmware_no_tz.h"
+ #include "iris_ctrls.h"
+ #include "iris_vidc.h"
+ 
+@@ -201,6 +203,8 @@
+ 		return;
+ 
+ 	iris_core_deinit(core);
++	/* Error states can skip the normal firmware unload. */
++	frame_fw_no_tz_deinit(core);
+ 
+ 	video_unregister_device(core->vdev_dec);
+ 	video_unregister_device(core->vdev_enc);
+@@ -218,6 +222,10 @@
+ 	iris_core_deinit(core);
+ 	iris_core_init(core);
+ }
++
++static bool arm_av1_lab;
++module_param(arm_av1_lab, bool, 0400);
++MODULE_PARM_DESC(arm_av1_lab, "Experimental decoder; disabled by default");
+ 
+ static int iris_probe(struct platform_device *pdev)
+ {
+@@ -225,6 +233,11 @@
+ 	struct iris_core *core;
+ 	u64 dma_mask;
+ 	int ret;
++
++	/* Fail closed: no automatic driver replacement or unsupported boards. */
++	if (!arm_av1_lab || strcmp(init_utsname()->release, "6.18.0-g83913f38113c") ||
++	    !of_device_is_compatible(dev->of_node, "qcom,sm8650-iris"))
++		return -EPERM;
+ 
+ 	core = devm_kzalloc(&pdev->dev, sizeof(*core), GFP_KERNEL);
+ 	if (!core)
+@@ -390,13 +403,13 @@
+ 	},
+ 	{ },
+ };
+-MODULE_DEVICE_TABLE(of, iris_dt_match);
++/* No modalias: explicit lab loading only. */
+ 
+ static struct platform_driver qcom_iris_driver = {
+ 	.probe = iris_probe,
+ 	.remove = iris_remove,
+ 	.driver = {
+-		.name = "qcom-iris",
++		.name = "steam-frame-av1-lab",
+ 		.of_match_table = iris_dt_match,
+ 		.pm = &iris_pm_ops,
+ 	},
+--- a/iris_vdec.c
++++ b/iris_vdec.c
+@@ -21,8 +21,8 @@
+ 	struct iris_core *core = inst->core;
+ 	struct v4l2_format *f;
+ 
+-	inst->fmt_src = kzalloc_obj(*inst->fmt_src);
+-	inst->fmt_dst = kzalloc_obj(*inst->fmt_dst);
++	inst->fmt_src = kzalloc(sizeof(*inst->fmt_src), GFP_KERNEL);
++	inst->fmt_dst = kzalloc(sizeof(*inst->fmt_dst), GFP_KERNEL);
+ 
+ 	inst->fw_min_count = 0;
+ 
+@@ -144,6 +144,8 @@
+ 
+ 		f->pixelformat = fmt;
+ 		f->flags = V4L2_FMT_FLAG_COMPRESSED | V4L2_FMT_FLAG_DYN_RESOLUTION;
++		if (f->pixelformat == V4L2_PIX_FMT_AV1)
++			strscpy(f->description, "AV1 stateful", sizeof(f->description));
+ 		break;
+ 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+ 		fmt = find_format_by_index(inst, f->index, f->type);
+@@ -212,8 +214,22 @@
+ 
+ 	q = v4l2_m2m_get_vq(inst->m2m_ctx, f->type);
+ 
+-	if (vb2_is_busy(q))
++	if (vb2_is_busy(q)) {
++		/* Frame repeats S_FMT after STREAMOFF for an unchanged source-change
++		 * event, retaining its imported DMA buffers. Accept only that no-op;
++		 * genuine storage/layout changes still require REQBUFS(0).
++		 */
++		if (inst->codec == V4L2_PIX_FMT_AV1 &&
++		    f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
++		    !vb2_is_streaming(q) &&
++		    f->fmt.pix_mp.width == inst->fmt_dst->fmt.pix_mp.width &&
++		    f->fmt.pix_mp.height == inst->fmt_dst->fmt.pix_mp.height &&
++		    f->fmt.pix_mp.pixelformat == inst->fmt_dst->fmt.pix_mp.pixelformat) {
++			memcpy(f, inst->fmt_dst, sizeof(*f));
++			return 0;
++		}
+ 		return -EBUSY;
++	}
+ 
+ 	/* Width and height are optional, so fall back to a valid placeholder
+ 	 * resolution until the real one is decoded from the bitstream.
+--- a/iris_venc.c
++++ b/iris_venc.c
+@@ -19,8 +19,8 @@
+ 	struct iris_core *core = inst->core;
+ 	struct v4l2_format *f;
+ 
+-	inst->fmt_src = kzalloc_obj(*inst->fmt_src);
+-	inst->fmt_dst = kzalloc_obj(*inst->fmt_dst);
++	inst->fmt_src = kzalloc(sizeof(*inst->fmt_src), GFP_KERNEL);
++	inst->fmt_dst = kzalloc(sizeof(*inst->fmt_dst), GFP_KERNEL);
+ 	if (!inst->fmt_src || !inst->fmt_dst) {
+ 		kfree(inst->fmt_src);
+ 		kfree(inst->fmt_dst);
+--- a/iris_vidc.c
++++ b/iris_vidc.c
+@@ -454,9 +454,9 @@
+ 	strscpy(cap->driver, IRIS_DRV_NAME, sizeof(cap->driver));
+ 
+ 	if (inst->domain == DECODER)
+-		strscpy(cap->card, "Iris Decoder", sizeof(cap->card));
+-	else
+-		strscpy(cap->card, "Iris Encoder", sizeof(cap->card));
++		strscpy(cap->card, "iris_decoder", sizeof(cap->card));
++	else
++		strscpy(cap->card, "iris_encoder", sizeof(cap->card));
+ 
+ 	return 0;
+ }
+--- a/iris_vpu_common.c
++++ b/iris_vpu_common.c
+@@ -496,7 +496,7 @@
+ err_unvote_icc:
+ 	iris_unset_icc_bw(core);
+ err:
+-	dev_err(core->dev, "power on failed\n");
++	dev_err(core->dev, "power on failed: %d\n", ret);
+ 
+ 	return ret;
+ }
+--- a/Makefile
++++ b/Makefile
+@@ -1,4 +1,4 @@
+-qcom-iris-objs += iris_buffer.o \
++steam-frame-av1-lab-objs += iris_buffer.o \
+              iris_common.o \
+              iris_core.o \
+              iris_ctrls.o \
+@@ -29,4 +29,10 @@
+              iris_vpu_buffer.o \
+              iris_vpu_common.o \
+ 
+-obj-$(CONFIG_VIDEO_QCOM_IRIS) += qcom-iris.o
++obj-m += steam-frame-av1-lab.o
++
++# Baseline Frame kernel has CONFIG_V4L2_MEM2MEM_DEV disabled.
++steam-frame-av1-lab-objs += v4l2-mem2mem.o
++
++ccflags-y += -include $(src)/frame_av1_compat.h
++steam-frame-av1-lab-objs += frame_firmware_no_tz.o

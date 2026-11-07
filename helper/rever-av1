@@ -1,0 +1,230 @@
+#!/bin/sh
+# Rever AV1 for the Steam Frame (PRIVATE until the user publishes it; GPL-2.0 module): the one root helper the Rever app
+# calls, installed once by the PC's setup assistant into /etc/rever/av1 (root-owned) with a sudo rule for these four
+# commands only (sudoers.rever-av1, as /etc/sudoers.d/zz-rever-av1). It does what the lab's av1_load.sh / av1_swap_test.sh / av1_quiet.sh did by hand on
+# 2026-11-02/03 (KB technique.frame_av1_driver AV1D-001..008):
+#   rever-av1 on       Valve's decoder driver let go, Rever's AV1 module loaded (the clock at its top while decoding)
+#   rever-av1 off      Rever's module let go, Valve's driver bound again (with up to two kicks when it comes back silent)
+#   rever-av1 status   which driver holds the decoder, whether the module fits this kernel
+#   rever-av1 build    the module compiled for the running kernel from the source kept here (after a SteamOS update)
+# Nothing is loaded at boot: a reboot always gives Valve's driver back. No variable from the caller is read (sudo resets
+# the environment anyway): every path and wait is fixed here.
+# Exit codes: 0 done; 2 the decoder stayed busy (Steam's home video), nothing changed; 3 no module for this kernel (run
+# build); 4 the change failed and Valve's driver is back; 5 Valve's driver silent after the kicks (reboot the headset);
+# 6 build failed; 64 usage; 77 not root.
+set -u
+ROOT=/etc/rever/av1
+# everything of size on /home: on the Frame /var - and /etc, an overlay on it - is a 224 MB partition, and the kernel
+# headers alone (172 MB unpacked) filled it on the first install (2026-11-03, freed at once, nothing harmed). Root-owned:
+# the player's account cannot change what root loads.
+STATE=/home/.rever-av1
+LOG="$STATE/rever-av1.log"
+DEV=aa00000.video-codec
+MODULE=steam_frame_av1_lab
+KERNEL=$(uname -r)
+KO="$STATE/modules/$KERNEL/steam-frame-av1-lab.ko"
+# the headers package of the running kernel's series: 6.18.0-g... -> linux-618-deckard-headers, 7.2.0-g... (SteamOS
+# 0.5.7, 2026-11-04) -> linux-72-deckard-headers
+HEADERS_PKG=$(echo "$KERNEL" | awk -F'[.-]' '{print "linux-" $1 $2 "-deckard-headers"}')
+QUIET_WAIT=30
+REBIND_UNIT=iris-driver-rebind.service
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+log() { echo "$(date '+%F %T') $*" >> "$LOG" 2>/dev/null; echo "$*"; }
+
+bound_driver() { basename "$(readlink /sys/bus/platform/devices/$DEV/driver 2>/dev/null)" 2>/dev/null; }
+valve_bound() { [ "$(bound_driver)" = "qcom-iris" ]; }
+ours_loaded() { lsmod | grep -q "^$MODULE "; }
+ctrl_clock_count() { awk '$1 == "video_cc_mvs0c_clk" {print $2}' /sys/kernel/debug/clk/clk_summary 2>/dev/null; }
+
+# Valve's watcher rebinds qcom-iris whenever its core says CORE_DEINIT, also mid-swap (AV1D-006): stopped for the change,
+# never disabled, back whenever Valve's driver is bound at the end
+rebind_watch_stop() { systemctl stop "$REBIND_UNIT" 2>/dev/null || true; }
+rebind_watch_restore() { valve_bound && systemctl start "$REBIND_UNIT" 2>/dev/null; return 0; }
+
+decoder_node() {
+    for node in /sys/class/video4linux/video*; do
+        [ "$(cat "$node/name" 2>/dev/null)" = "qcom-iris-decoder" ] && basename "$node" && return
+    done
+}
+
+iris_nodes() {
+    for node in /sys/class/video4linux/video*; do
+        case "$(cat "$node/name" 2>/dev/null)" in
+            qcom-iris-decoder|qcom-iris-encoder) echo "/dev/$(basename "$node")" ;;
+        esac
+    done
+}
+
+iris_holders() {
+    nodes=$(iris_nodes)
+    [ -n "$nodes" ] || return 0
+    fuser $nodes 2>/dev/null | tr -s ' \t' '\n' | grep -E '^[0-9]+$' | sort -u
+}
+
+# Steam's web helpers stopped (never closed) while the driver changes: one with the decoder open while its driver goes
+# frees memory it still uses (the kernel heap Oops of AV1D-002); a holder is waited for, never killed
+steam_freeze() { pkill -STOP -x steamwebhelper 2>/dev/null; }
+steam_resume() { pkill -CONT -x steamwebhelper 2>/dev/null; }
+
+quiet_decoder() {
+    i=0
+    while [ "$i" -lt "$((QUIET_WAIT * 2))" ]; do
+        steam_freeze
+        [ -z "$(iris_holders)" ] && return 0
+        steam_resume
+        sleep 0.5
+        i=$((i + 1))
+    done
+    log "the decoder stayed in use $QUIET_WAIT s (by $(iris_holders | tr '\n' ' ')): nothing changed"
+    return 1
+}
+
+# the decoder runtime-suspended before its driver changes (a powered one met by the other driver killed the kernel)
+wait_idle() {
+    i=0
+    while [ "$i" -lt 40 ]; do
+        [ "$(cat /sys/bus/platform/devices/$DEV/power/runtime_status 2>/dev/null)" = "suspended" ] && return 0
+        sleep 0.25
+        i=$((i + 1))
+    done
+    return 1
+}
+
+# our power-collapsed core let go before rmmod (v7.6: without it every unload leaked the controller clock, AV1D-005)
+let_go() { echo 1 > "/sys/module/$MODULE/parameters/rever_let_go" 2>/dev/null || true; }
+
+offers() { v4l2-ctl -d "/dev/$(decoder_node)" --list-formats-out 2>/dev/null | grep -q "'$1'"; }
+
+module_fits() {
+    [ -f "$KO" ] && [ "$(modinfo -F vermagic "$KO" 2>/dev/null | cut -d' ' -f1)" = "$KERNEL" ]
+}
+
+finish() {
+    steam_resume
+    rebind_watch_restore
+}
+
+# set before Steam's helpers are ever stopped: whatever ends the helper (an error, a signal, the headset turned off),
+# they are resumed and Valve's watcher is back when its driver is
+guard() {
+    trap finish EXIT
+    trap 'exit 130' HUP INT TERM
+}
+
+cmd_status() {
+    echo "driver: $(bound_driver)"
+    echo "module loaded: $(ours_loaded && echo yes || echo no)"
+    echo "module for $KERNEL: $(module_fits && echo yes || echo no)"
+    echo "in use by: $(iris_holders | tr '\n' ' ')"
+    echo "av1: $(offers AV01 && echo yes || echo no)"
+}
+
+cmd_on() {
+    ours_loaded && offers AV01 && { log "on: already on"; return 0; }
+    module_fits || { log "on: no module built for $KERNEL (rever-av1 build)"; return 3; }
+    sync
+    guard
+    quiet_decoder || return 2
+    rebind_watch_stop
+    wait_idle || log "on: Valve's decoder still powered after 10 s: let go anyway"
+    valve_bound && echo "$DEV" > /sys/bus/platform/drivers/qcom-iris/unbind
+    sleep 1
+    # the clock at its top while decoding (AV1D-007 / 008: iris's own policy sank to 100-300 MHz in VR, 70-79 ms decodes)
+    if ! insmod "$KO" arm_av1_lab=1 max_clock=1; then
+        log "on: insmod failed: Valve's driver back"
+        echo "$DEV" > /sys/bus/platform/drivers/qcom-iris/bind 2>/dev/null
+        return 4
+    fi
+    sleep 2
+    if offers AV01; then
+        log "on: Rever AV1 on ($KERNEL, controller clock enables $(ctrl_clock_count))"
+        return 0
+    fi
+    log "on: the module offers no AV1: back to Valve's"
+    cmd_off_inner
+    return 4
+}
+
+cmd_off_inner() {
+    if ours_loaded; then
+        wait_idle || log "off: our decoder still powered after 10 s: let go anyway"
+        let_go
+        rmmod "$MODULE" || { log "off: rmmod failed (still in use?)"; return 4; }
+        sleep 1
+    fi
+    valve_bound || echo "$DEV" > /sys/bus/platform/drivers/qcom-iris/bind
+    sleep 2
+    # Valve's firmware sometimes stays silent after its own rebind (AV1D-004): ours loaded once more and let go,
+    # up to twice; after that only a reboot brings it back
+    kick=0
+    while ! offers HEVC; do
+        kick=$((kick + 1))
+        if [ "$kick" -gt 2 ]; then
+            log "off: Valve's decoder silent after 2 kicks: reboot the headset"
+            return 5
+        fi
+        log "off: Valve's decoder silent: kick $kick"
+        wait_idle || true
+        echo "$DEV" > /sys/bus/platform/drivers/qcom-iris/unbind
+        sleep 1
+        module_fits && insmod "$KO" arm_av1_lab=1 && sleep 2 && offers AV01
+        wait_idle || true
+        let_go
+        rmmod "$MODULE" 2>/dev/null
+        sleep 1
+        echo "$DEV" > /sys/bus/platform/drivers/qcom-iris/bind
+        sleep 2
+    done
+    log "off: Valve's driver back (kicks $kick, controller clock enables $(ctrl_clock_count))"
+    return 0
+}
+
+cmd_off() {
+    valve_bound && ! ours_loaded && offers HEVC && { log "off: already Valve's"; return 0; }
+    sync
+    guard
+    quiet_decoder || return 2
+    rebind_watch_stop
+    cmd_off_inner
+}
+
+cmd_build() {
+    src="$STATE/src"
+    [ -f "$src/Makefile" ] || [ -f "$src/Kbuild" ] || { log "build: no module source in $src"; return 6; }
+    mkdir -p "$STATE/pkg" "$STATE/headers" "$STATE/modules/$KERNEL"
+    tree="$STATE/headers/usr/lib/modules/$KERNEL/build"
+    if [ ! -d "$tree" ]; then
+        # the headers of this exact kernel from the headset's own configured repository (its address never leaves it)
+        url=$(pacman -Sp --nodeps --nodeps "$HEADERS_PKG" 2>/dev/null | grep "/$HEADERS_PKG-" | head -1)
+        [ -n "$url" ] || { log "build: no headers package ($HEADERS_PKG) for $KERNEL"; return 6; }
+        file="$STATE/pkg/$(basename "$url")"
+        [ -f "$file" ] || curl -fsSL -o "$file" "$url" || { log "build: headers download failed"; return 6; }
+        rm -rf "$STATE/headers" && mkdir -p "$STATE/headers"
+        tar --zstd -xf "$file" -C "$STATE/headers" || { log "build: headers unpack failed"; return 6; }
+    fi
+    [ -d "$tree" ] || { log "build: the headers are not for $KERNEL"; return 6; }
+    work="$STATE/build"
+    rm -rf "$work" && mkdir -p "$work" && cp -a "$src/." "$work/"
+    make -C "$tree" M="$work" -j4 CONFIG_DEBUG_INFO_BTF_MODULES= modules > "$STATE/build.log" 2>&1 \
+        || { log "build: make failed (see $STATE/build.log)"; return 6; }
+    built="$work/steam-frame-av1-lab.ko"
+    [ "$(modinfo -F vermagic "$built" 2>/dev/null | cut -d' ' -f1)" = "$KERNEL" ] \
+        || { log "build: the module does not fit $KERNEL"; return 6; }
+    install -m 0644 -o root -g root "$built" "$KO"
+    # only the source and the module stay (~13 MB): the headers, their package and the build go (a new kernel needs
+    # new ones anyway)
+    rm -rf "$STATE/headers" "$STATE/pkg" "$work"
+    log "build: module for $KERNEL ($(sha256sum "$KO" | cut -c1-16))"
+    return 0
+}
+
+[ "$(id -u)" = "0" ] || { echo "rever-av1 runs as root (sudo)" >&2; exit 77; }
+case "${1:-}" in
+    on) cmd_on ;;
+    off) cmd_off ;;
+    status) cmd_status ;;
+    build) cmd_build ;;
+    *) echo "usage: rever-av1 on|off|status|build" >&2; exit 64 ;;
+esac

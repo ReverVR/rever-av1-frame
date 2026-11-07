@@ -1,0 +1,632 @@
+diff -ruN a/Makefile b/Makefile
+--- a/drivers/media/platform/qcom/iris/Makefile
++++ b/drivers/media/platform/qcom/iris/Makefile
+@@ -1,4 +1,4 @@
+-qcom-iris-objs += iris_buffer.o \
++steam-frame-av1-lab-objs += iris_buffer.o \
+              iris_common.o \
+              iris_core.o \
+              iris_ctrls.o \
+@@ -29,4 +29,15 @@
+              iris_vpu_buffer.o \
+              iris_vpu_common.o \
+ 
+-obj-$(CONFIG_VIDEO_QCOM_IRIS) += qcom-iris.o
++obj-m += steam-frame-av1-lab.o
++
++# Baseline Frame kernel has CONFIG_V4L2_MEM2MEM_DEV disabled (6.18 and 7.2 alike): the framework comes with the
++# module, in the kernel series' own version (Rever lab v7.8: 7.2's v4l2_m2m_buf_copy_metadata has two arguments)
++ifeq ($(VERSION),6)
++steam-frame-av1-lab-objs += v4l2-mem2mem.o
++else
++steam-frame-av1-lab-objs += v4l2-mem2mem-k72.o
++endif
++
++ccflags-y += -include $(src)/frame_av1_compat.h
++steam-frame-av1-lab-objs += frame_firmware_no_tz.o
+diff -ruN a/iris_buffer.c b/iris_buffer.c
+--- a/drivers/media/platform/qcom/iris/iris_buffer.c
++++ b/drivers/media/platform/qcom/iris/iris_buffer.c
+@@ -535,7 +535,7 @@
+ 	if (!buffers->size)
+ 		return 0;
+ 
+-	buffer = kzalloc_obj(*buffer);
++	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+ 	if (!buffer)
+ 		return -ENOMEM;
+ 
+diff -ruN a/iris_core.c b/iris_core.c
+--- a/drivers/media/platform/qcom/iris/iris_core.c
++++ b/drivers/media/platform/qcom/iris/iris_core.c
+@@ -3,15 +3,44 @@
+  * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
++#include <linux/interrupt.h>
+ #include <linux/pm_runtime.h>
+ 
+ #include "iris_core.h"
++#include "frame_firmware_no_tz.h"
+ #include "iris_firmware.h"
+ #include "iris_state.h"
+ #include "iris_vpu_common.h"
+ 
++/* Rever lab: a power-collapsed core let go as it is, like Valve's driver - waking it to unload it put the firmware
++ * CPU in reset mid-run, the power-off handshake went unanswered and the controller clock stayed on (KB AV1D-005).
++ * The suspend already did PC prep, CPU reset and power-off: only memory is left to free. Reached through
++ * rever_let_go before rmmod - the driver core wakes the device before iris_remove() */
++bool iris_core_release_collapsed(struct iris_core *core)
++{
++	bool released = false;
++
++	pm_runtime_get_noresume(core->dev);
++	mutex_lock(&core->lock);
++	if (frame_fw_uses_no_tz(core) && core->state == IRIS_CORE_INIT &&
++	    pm_runtime_status_suspended(core->dev)) {
++		dev_info(core->dev, "Rever lab: power-collapsed core let go as it is\n");
++		frame_fw_no_tz_deinit(core);
++		iris_hfi_queues_deinit(core);
++		core->state = IRIS_CORE_DEINIT;
++		released = true;
++	}
++	mutex_unlock(&core->lock);
++	pm_runtime_put_noidle(core->dev);
++
++	return released;
++}
++
+ void iris_core_deinit(struct iris_core *core)
+ {
++	if (iris_core_release_collapsed(core))
++		return;
++
+ 	pm_runtime_resume_and_get(core->dev);
+ 
+ 	mutex_lock(&core->lock);
+@@ -52,8 +81,10 @@
+ 		ret = 0;
+ 		goto exit;
+ 	} else if (core->state == IRIS_CORE_ERROR) {
++		/* Rever lab: left as it is - only a teardown ends the error state (upstream set DEINIT here and the
++		 * next open booted again over a live firmware) */
+ 		ret = -EINVAL;
+-		goto error;
++		goto exit;
+ 	}
+ 
+ 	core->state = IRIS_CORE_INIT;
+@@ -80,13 +111,33 @@
+ 
+ 	core->iris_firmware_data->init_hfi_ops(core);
+ 
++	/* Rever lab: a late answer to an earlier, timed-out init must not pass for this one */
++	reinit_completion(&core->core_init_done);
+ 	ret = iris_hfi_core_init(core);
+ 	if (ret)
+ 		goto error_unload_fw;
+ 
+ 	mutex_unlock(&core->lock);
+ 
+-	return iris_wait_for_system_response(core);
++	ret = iris_wait_for_system_response(core);
++	if (ret == -ETIMEDOUT) {
++		/* Rever lab: a firmware that never answered is let go - left on, its IRQ stayed enabled and its memory
++		 * mapped for the next open to boot over. disable_irq() first: a handler in flight ends before the
++		 * queues go */
++		disable_irq(core->irq);
++		mutex_lock(&core->lock);
++		if (core->state == IRIS_CORE_ERROR) {
++			dev_err(core->dev, "Rever lab: firmware silent at init, let go\n");
++			iris_fw_unload(core);
++			iris_vpu_power_off(core);
++			iris_hfi_queues_deinit(core);
++			core->state = IRIS_CORE_DEINIT;
++		}
++		mutex_unlock(&core->lock);
++		enable_irq(core->irq);
++	}
++
++	return ret;
+ 
+ error_unload_fw:
+ 	iris_fw_unload(core);
+diff -ruN a/iris_core.h b/iris_core.h
+--- a/drivers/media/platform/qcom/iris/iris_core.h
++++ b/drivers/media/platform/qcom/iris/iris_core.h
+@@ -80,6 +80,9 @@
+  */
+ 
+ struct iris_core {
++	struct device *frame_fw_device;
++	struct iommu_domain *frame_fw_domain;
++	size_t frame_fw_mapped;
+ 	struct device				*dev;
+ 	void __iomem				*reg_base;
+ 	int					irq;
+@@ -127,5 +130,6 @@
+ 
+ int iris_core_init(struct iris_core *core);
+ void iris_core_deinit(struct iris_core *core);
++bool iris_core_release_collapsed(struct iris_core *core);
+ 
+ #endif
+diff -ruN a/iris_firmware.c b/iris_firmware.c
+--- a/drivers/media/platform/qcom/iris/iris_firmware.c
++++ b/drivers/media/platform/qcom/iris/iris_firmware.c
+@@ -11,6 +11,7 @@
+ 
+ #include "iris_core.h"
+ #include "iris_firmware.h"
++#include "frame_firmware_no_tz.h"
+ 
+ #define IRIS_PAS_ID				9
+ 
+@@ -53,8 +54,16 @@
+ 		goto err_release_fw;
+ 	}
+ 
+-	ret = qcom_mdt_load(dev, firmware, fw_name,
+-			    IRIS_PAS_ID, mem_virt, mem_phys, res_size, NULL);
++	if (frame_fw_uses_no_tz(core)) {
++		frame_fw_hold_cpu(core);
++		ret = qcom_mdt_load_no_init(dev, firmware, fw_name,
++					    mem_virt, mem_phys, res_size, NULL);
++		if (!ret)
++			ret = frame_fw_no_tz_boot(core, mem_phys, res_size);
++	} else {
++		ret = qcom_mdt_load(dev, firmware, fw_name,
++				    IRIS_PAS_ID, mem_virt, mem_phys, res_size, NULL);
++	}
+ 
+ 	memunmap(mem_virt);
+ err_release_fw:
+@@ -74,6 +83,16 @@
+ 	if (ret)
+ 		fwpath = core->iris_firmware_desc->fwname;
+ 
++	if (frame_fw_uses_no_tz(core)) {
++		ret = frame_fw_no_tz_init(core);
++		if (ret)
++			return ret;
++		ret = iris_load_fw_to_memory(core, fwpath);
++		if (ret)
++			frame_fw_no_tz_deinit(core);
++		return ret;
++	}
++
+ 	ret = iris_load_fw_to_memory(core, fwpath);
+ 	if (ret) {
+ 		dev_err(core->dev, "firmware download failed\n");
+@@ -104,10 +123,14 @@
+ 
+ int iris_fw_unload(struct iris_core *core)
+ {
++	if (frame_fw_uses_no_tz(core))
++		return frame_fw_no_tz_unload(core);
+ 	return qcom_scm_pas_shutdown(IRIS_PAS_ID);
+ }
+ 
+ int iris_set_hw_state(struct iris_core *core, bool resume)
+ {
++	if (frame_fw_uses_no_tz(core))
++		return frame_fw_no_tz_state(core, resume);
+ 	return qcom_scm_set_remote_state(resume, 0);
+ }
+diff -ruN a/iris_hfi_gen1_command.c b/iris_hfi_gen1_command.c
+--- a/drivers/media/platform/qcom/iris/iris_hfi_gen1_command.c
++++ b/drivers/media/platform/qcom/iris/iris_hfi_gen1_command.c
+@@ -1134,7 +1134,7 @@
+ {
+ 	struct iris_inst *out;
+ 
+-	out = kzalloc_obj(*out);
++	out = kzalloc(sizeof(*out), GFP_KERNEL);
+ 	if (!out)
+ 		return NULL;
+ 
+diff -ruN a/iris_hfi_gen2_command.c b/iris_hfi_gen2_command.c
+--- a/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
++++ b/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
+@@ -1380,7 +1380,7 @@
+ 	struct iris_inst_hfi_gen2 *out;
+ 
+ 	/* The allocation is intentionally larger than struct iris_inst. */
+-	out = kzalloc_obj(*out);
++	out = kzalloc(sizeof(*out), GFP_KERNEL);
+ 	if (!out)
+ 		return NULL;
+ 
+diff -ruN a/iris_instance.h b/iris_instance.h
+--- a/drivers/media/platform/qcom/iris/iris_instance.h
++++ b/drivers/media/platform/qcom/iris/iris_instance.h
+@@ -116,6 +116,7 @@
+ 	bool				last_buffer_dequeued;
+ 	u64				last_buf_ns;
+ 	u32				frame_counter;
++	u32				rever_peak_rate; /* Rever lab v7.7: the highest frame_rate measured this session */
+ 	u32				frame_rate;
+ 	u32				operating_rate;
+ 	u32				hfi_rc_type;
+diff -ruN a/iris_platform_vpu3x.c b/iris_platform_vpu3x.c
+--- a/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
++++ b/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
+@@ -39,7 +39,7 @@
+ static const struct iris_firmware_desc iris_vpu33_p4_gen2_desc = {
+ 	.firmware_data = &iris_hfi_gen2_data,
+ 	.get_vpu_buffer_size = iris_vpu33_buf_size,
+-	.fwname = "qcom/vpu/vpu33_p4.mbn",
++	.fwname = "qcom/vpu/vpu33_4v.mbn",
+ };
+ 
+ static const struct iris_firmware_desc iris_vpu35_p4_gen2_desc = {
+diff -ruN a/iris_power.c b/iris_power.c
+--- a/drivers/media/platform/qcom/iris/iris_power.c
++++ b/drivers/media/platform/qcom/iris/iris_power.c
+@@ -13,6 +13,18 @@
+ #include "iris_resources.h"
+ #include "iris_vpu_common.h"
+ 
++/* Rever lab: the decoder at its highest clock and bandwidth (the upstream formula under-clocks VR bitrates) */
++static bool max_clock;
++/* Rever lab: the clock policy - a margin over the sessions' sum, the DDR's top row from VR rates up */
++static unsigned int rever_clock_margin = 20;
++module_param(rever_clock_margin, uint, 0644);
++MODULE_PARM_DESC(rever_clock_margin, "Rever lab: percent over the sessions' summed clock");
++static unsigned int rever_vr_fps = 72;
++module_param(rever_vr_fps, uint, 0644);
++MODULE_PARM_DESC(rever_vr_fps, "Rever lab: from this frame rate the DDR vote takes the table's top row");
++module_param(max_clock, bool, 0644);
++MODULE_PARM_DESC(max_clock, "Rever lab: hold the decoder at its highest clock and bandwidth");
++
+ static u32 iris_calc_bw(struct iris_inst *inst, struct icc_vote_data *data)
+ {
+ 	const struct bw_info *bw_tbl = NULL;
+@@ -68,9 +80,12 @@
+ 
+ 	vote_data->width = inp_f->fmt.pix_mp.width;
+ 	vote_data->height = inp_f->fmt.pix_mp.height;
+-	vote_data->fps = DEFAULT_FPS;
++	vote_data->fps = inst->domain == DECODER ?
++		max(inst->frame_rate, inst->operating_rate) : DEFAULT_FPS;
+ 
+ 	inst->power.icc_bw = iris_calc_bw(inst, vote_data);
++	if ((max_clock || vote_data->fps >= rever_vr_fps) && inst->core->iris_platform_data->bw_tbl_dec_size)
++		inst->power.icc_bw = inst->core->iris_platform_data->bw_tbl_dec[0].bw_ddr;
+ 
+ 	return iris_set_interconnects(inst);
+ }
+@@ -90,6 +105,12 @@
+ 		freq += instance->power.min_freq;
+ 	}
+ 
++	if (max_clock && freq)
++		freq = ULONG_MAX;
++	else if (freq)
++		freq += div_u64(freq * rever_clock_margin, 100);
++	if (freq != core->power.clk_freq)
++		dev_info_ratelimited(core->dev, "Rever lab: decoder clock %llu Hz asked\n", freq);
+ 	core->power.clk_freq = freq;
+ 	ret = iris_opp_set_rate(core->dev, freq);
+ 	mutex_unlock(&core->lock);
+diff -ruN a/iris_probe.c b/iris_probe.c
+--- a/drivers/media/platform/qcom/iris/iris_probe.c
++++ b/drivers/media/platform/qcom/iris/iris_probe.c
+@@ -6,6 +6,7 @@
+ #include <linux/clk.h>
+ #include <linux/interconnect.h>
+ #include <linux/module.h>
++#include <linux/utsname.h>
+ #include <linux/pm_domain.h>
+ #include <linux/pm_opp.h>
+ #include <linux/pm_runtime.h>
+@@ -13,6 +14,7 @@
+ #include <linux/soc/qcom/ubwc.h>
+ 
+ #include "iris_core.h"
++#include "frame_firmware_no_tz.h"
+ #include "iris_ctrls.h"
+ #include "iris_vidc.h"
+ 
+@@ -68,8 +70,12 @@
+ 	/* backwards compatibility for incomplete ABI SM8250 */
+ 	if (ret == -ENODEV &&
+ 	    of_device_is_compatible(core->dev->of_node, "qcom,sm8250-venus")) {
+-		iris_opp_pd_data.num_pd_names--;
+-		ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data,
++		struct dev_pm_domain_attach_data iris_opp_pd_data_fewer = {
++			.pd_names = iris_opp_pd_data.pd_names,
++			.num_pd_names = iris_opp_pd_data.num_pd_names - 1,
++			.pd_flags = iris_opp_pd_data.pd_flags,
++		};
++		ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data_fewer,
+ 						 &core->opp_pmdomain_tbl);
+ 	}
+ 	if (ret < 0)
+@@ -192,6 +198,9 @@
+ 	return ret;
+ }
+ 
++/* Rever lab: the probed core, for rever_let_go */
++static struct iris_core *rever_core;
++
+ static void iris_remove(struct platform_device *pdev)
+ {
+ 	struct iris_core *core;
+@@ -200,7 +209,10 @@
+ 	if (!core)
+ 		return;
+ 
++	rever_core = NULL;
+ 	iris_core_deinit(core);
++	/* Error states can skip the normal firmware unload. */
++	frame_fw_no_tz_deinit(core);
+ 
+ 	video_unregister_device(core->vdev_dec);
+ 	video_unregister_device(core->vdev_enc);
+@@ -219,6 +231,47 @@
+ 	iris_core_init(core);
+ }
+ 
++static bool arm_av1_lab;
++module_param(arm_av1_lab, bool, 0400);
++MODULE_PARM_DESC(arm_av1_lab, "Experimental decoder; disabled by default");
++
++/* Rever lab: 1 lets a power-collapsed core go before rmmod (iris_core_release_collapsed) */
++static int rever_let_go_set(const char *val, const struct kernel_param *kp)
++{
++	bool on;
++	int ret = kstrtobool(val, &on);
++
++	if (ret)
++		return ret;
++	if (!on)
++		return 0;
++	if (!rever_core)
++		return -ENODEV;
++	return iris_core_release_collapsed(rever_core) ? 0 : -EBUSY;
++}
++
++static const struct kernel_param_ops rever_let_go_ops = {
++	.set = rever_let_go_set,
++};
++module_param_cb(rever_let_go, &rever_let_go_ops, NULL, 0200);
++MODULE_PARM_DESC(rever_let_go, "Rever lab: 1 lets a power-collapsed core go before rmmod");
++
++/* Rever lab v7.8: the Frame kernels this module was checked on (their headers fit it, Valve's iris the same under
++ * both): any other fails closed until it is checked */
++static bool frame_av1_kernel_checked(void)
++{
++	static const char *const checked[] = {
++		"6.18.0-g83913f38113c",	/* SteamOS 0.5.6 */
++		"7.2.0-g9a8c8ea46950",	/* SteamOS 0.5.7 */
++	};
++	size_t i;
++
++	for (i = 0; i < ARRAY_SIZE(checked); i++)
++		if (!strcmp(init_utsname()->release, checked[i]))
++			return true;
++	return false;
++}
++
+ static int iris_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -226,6 +279,11 @@
+ 	u64 dma_mask;
+ 	int ret;
+ 
++	/* Fail closed: no automatic driver replacement or unsupported boards. */
++	if (!arm_av1_lab || !frame_av1_kernel_checked() ||
++	    !of_device_is_compatible(dev->of_node, "qcom,sm8650-iris"))
++		return -EPERM;
++
+ 	core = devm_kzalloc(&pdev->dev, sizeof(*core), GFP_KERNEL);
+ 	if (!core)
+ 		return -ENOMEM;
+@@ -302,6 +360,8 @@
+ 	if (ret)
+ 		goto err_vdev_unreg_enc;
+ 
++	rever_core = core;
++
+ 	return 0;
+ 
+ err_vdev_unreg_enc:
+@@ -390,13 +450,13 @@
+ 	},
+ 	{ },
+ };
+-MODULE_DEVICE_TABLE(of, iris_dt_match);
++/* No modalias: explicit lab loading only. */
+ 
+ static struct platform_driver qcom_iris_driver = {
+ 	.probe = iris_probe,
+ 	.remove = iris_remove,
+ 	.driver = {
+-		.name = "qcom-iris",
++		.name = "steam-frame-av1-lab",
+ 		.of_match_table = iris_dt_match,
+ 		.pm = &iris_pm_ops,
+ 	},
+diff -ruN a/iris_resources.c b/iris_resources.c
+--- a/drivers/media/platform/qcom/iris/iris_resources.c
++++ b/drivers/media/platform/qcom/iris/iris_resources.c
+@@ -82,7 +82,8 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	return ret;
++	/* Rever lab: 1 is "already active" (left on by the driver before this one), not a failure */
++	return 0;
+ }
+ 
+ int iris_disable_power_domains(struct iris_core *core, struct device *pd_dev)
+diff -ruN a/iris_vdec.c b/iris_vdec.c
+--- a/drivers/media/platform/qcom/iris/iris_vdec.c
++++ b/drivers/media/platform/qcom/iris/iris_vdec.c
+@@ -3,6 +3,7 @@
+  * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
++#include <linux/moduleparam.h>
+ #include <media/v4l2-event.h>
+ #include <media/v4l2-mem2mem.h>
+ 
+@@ -21,8 +22,8 @@
+ 	struct iris_core *core = inst->core;
+ 	struct v4l2_format *f;
+ 
+-	inst->fmt_src = kzalloc_obj(*inst->fmt_src);
+-	inst->fmt_dst = kzalloc_obj(*inst->fmt_dst);
++	inst->fmt_src = kzalloc(sizeof(*inst->fmt_src), GFP_KERNEL);
++	inst->fmt_dst = kzalloc(sizeof(*inst->fmt_dst), GFP_KERNEL);
+ 
+ 	inst->fw_min_count = 0;
+ 
+@@ -144,6 +145,8 @@
+ 
+ 		f->pixelformat = fmt;
+ 		f->flags = V4L2_FMT_FLAG_COMPRESSED | V4L2_FMT_FLAG_DYN_RESOLUTION;
++		if (f->pixelformat == V4L2_PIX_FMT_AV1)
++			strscpy(f->description, "AV1 stateful", sizeof(f->description));
+ 		break;
+ 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+ 		fmt = find_format_by_index(inst, f->index, f->type);
+@@ -212,8 +215,22 @@
+ 
+ 	q = v4l2_m2m_get_vq(inst->m2m_ctx, f->type);
+ 
+-	if (vb2_is_busy(q))
++	if (vb2_is_busy(q)) {
++		/* Frame repeats S_FMT after STREAMOFF for an unchanged source-change
++		 * event, retaining its imported DMA buffers. Accept only that no-op;
++		 * genuine storage/layout changes still require REQBUFS(0).
++		 */
++		if (inst->codec == V4L2_PIX_FMT_AV1 &&
++		    f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
++		    !vb2_is_streaming(q) &&
++		    f->fmt.pix_mp.width == inst->fmt_dst->fmt.pix_mp.width &&
++		    f->fmt.pix_mp.height == inst->fmt_dst->fmt.pix_mp.height &&
++		    f->fmt.pix_mp.pixelformat == inst->fmt_dst->fmt.pix_mp.pixelformat) {
++			memcpy(f, inst->fmt_dst, sizeof(*f));
++			return 0;
++		}
+ 		return -EBUSY;
++	}
+ 
+ 	/* Width and height are optional, so fall back to a valid placeholder
+ 	 * resolution until the real one is decoded from the bitstream.
+@@ -424,6 +441,11 @@
+ 	return ret;
+ }
+ 
++/* Rever lab v7.7: an instance's measured rate never below this share of its peak (0 off) */
++static unsigned int rever_rate_floor_pct = 90;
++module_param(rever_rate_floor_pct, uint, 0644);
++MODULE_PARM_DESC(rever_rate_floor_pct, "Rever lab: the measured frame rate never below this %% of its peak");
++
+ int iris_vdec_qbuf(struct iris_inst *inst, struct vb2_v4l2_buffer *vbuf)
+ {
+ 	struct iris_buffer *buf = to_iris_buffer(vbuf);
+@@ -455,8 +477,15 @@
+ 		delta_ns = cur_buf_ns - inst->last_buf_ns;
+ 
+ 		if (delta_ns >= NSEC_PER_SEC) {
+-			inst->frame_rate = clamp_t(u32, inst->frame_counter, DEFAULT_FPS,
+-						   MAXIMUM_FPS);
++			u32 measured = clamp_t(u32, inst->frame_counter, DEFAULT_FPS,
++						 MAXIMUM_FPS);
++
++			/* Rever lab v7.7: never below a share of the session's peak - dropped packets queue fewer
++			 * buffers, and a rate measured lower asked for less clock: the decoder fell further behind */
++			if (measured > inst->rever_peak_rate)
++				inst->rever_peak_rate = measured;
++			inst->frame_rate = max_t(u32, measured,
++						  inst->rever_peak_rate * rever_rate_floor_pct / 100);
+ 			inst->frame_counter = 0;
+ 		}
+ 	}
+diff -ruN a/iris_venc.c b/iris_venc.c
+--- a/drivers/media/platform/qcom/iris/iris_venc.c
++++ b/drivers/media/platform/qcom/iris/iris_venc.c
+@@ -19,8 +19,8 @@
+ 	struct iris_core *core = inst->core;
+ 	struct v4l2_format *f;
+ 
+-	inst->fmt_src = kzalloc_obj(*inst->fmt_src);
+-	inst->fmt_dst = kzalloc_obj(*inst->fmt_dst);
++	inst->fmt_src = kzalloc(sizeof(*inst->fmt_src), GFP_KERNEL);
++	inst->fmt_dst = kzalloc(sizeof(*inst->fmt_dst), GFP_KERNEL);
+ 	if (!inst->fmt_src || !inst->fmt_dst) {
+ 		kfree(inst->fmt_src);
+ 		kfree(inst->fmt_dst);
+diff -ruN a/iris_vidc.c b/iris_vidc.c
+--- a/drivers/media/platform/qcom/iris/iris_vidc.c
++++ b/drivers/media/platform/qcom/iris/iris_vidc.c
+@@ -454,9 +454,9 @@
+ 	strscpy(cap->driver, IRIS_DRV_NAME, sizeof(cap->driver));
+ 
+ 	if (inst->domain == DECODER)
+-		strscpy(cap->card, "Iris Decoder", sizeof(cap->card));
++		strscpy(cap->card, "iris_decoder", sizeof(cap->card));
+ 	else
+-		strscpy(cap->card, "Iris Encoder", sizeof(cap->card));
++		strscpy(cap->card, "iris_encoder", sizeof(cap->card));
+ 
+ 	return 0;
+ }
+diff -ruN a/iris_vpu3x.c b/iris_vpu3x.c
+--- a/drivers/media/platform/qcom/iris/iris_vpu3x.c
++++ b/drivers/media/platform/qcom/iris/iris_vpu3x.c
+@@ -208,6 +208,8 @@
+ 	iris_disable_unprepare_clock(core, IRIS_CTRL_CLK);
+ 
+ disable_power:
++	if (ret)
++		dev_info(core->dev, "Rever lab: controller power-off handshake timed out (%d), clock left on\n", ret);
+ 	iris_disable_power_domains(core, core->pmdomain_tbl->pd_devs[IRIS_CTRL_POWER_DOMAIN]);
+ 	iris_disable_unprepare_clock(core, IRIS_AXI_CLK);
+ 
+diff -ruN a/iris_vpu_common.c b/iris_vpu_common.c
+--- a/drivers/media/platform/qcom/iris/iris_vpu_common.c
++++ b/drivers/media/platform/qcom/iris/iris_vpu_common.c
+@@ -281,6 +281,9 @@
+ {
+ 	int ret;
+ 
++	/* Rever lab: SW control before powering on (another driver may have left HW mode) */
++	dev_pm_genpd_set_hwmode(core->pmdomain_tbl->pd_devs[IRIS_HW_POWER_DOMAIN], false);
++
+ 	ret = iris_enable_power_domains(core, core->pmdomain_tbl->pd_devs[IRIS_HW_POWER_DOMAIN]);
+ 	if (ret)
+ 		return ret;
+@@ -420,6 +423,11 @@
+ 	writel(0x1, core->reg_base + WRAPPER_IRIS_VCODEC_VPU_WRAPPER_SPARE_0);
+ }
+ 
++/* Rever lab: the bitstream parser's cycles at VR bitrates, in percent of upstream's (200: 1 bit a cycle) */
++static unsigned int rever_vsp_factor = 200;
++module_param(rever_vsp_factor, uint, 0644);
++MODULE_PARM_DESC(rever_vsp_factor, "Rever lab: VSP cycles in percent of the upstream estimate");
++
+ u64 iris_vpu3x_vpu4x_calculate_frequency(struct iris_inst *inst, size_t data_size)
+ {
+ 	struct platform_inst_caps *caps = inst->core->iris_platform_data->inst_caps;
+@@ -454,6 +462,7 @@
+ 	vsp_cycles = div_u64(vsp_cycles, 2);
+ 	/* VSP FW overhead 1.05 */
+ 	vsp_cycles = div_u64(vsp_cycles * 21, 20);
++	vsp_cycles = div_u64(vsp_cycles * rever_vsp_factor, 100);
+ 
+ 	if (inst->fw_caps[STAGE].value == STAGE_1)
+ 		vsp_cycles = vsp_cycles * 3;
+@@ -496,7 +505,7 @@
+ err_unvote_icc:
+ 	iris_unset_icc_bw(core);
+ err:
+-	dev_err(core->dev, "power on failed\n");
++	dev_err(core->dev, "power on failed: %d\n", ret);
+ 
+ 	return ret;
+ }
