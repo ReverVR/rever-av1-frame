@@ -1,11 +1,11 @@
 # Rever's changes (GPL-2.0 section 2(a) notice)
 
-The files below were changed by Rever VR (2026-11-02 to 2026-11-04) from Linux v7.2's
+The files below were changed by Rever VR (2026-11-02 to 2026-11-07) from Linux v7.2's
 `drivers/media/platform/qcom/iris` (commit `8d3ae59288f1e7d58d76558a6ee96d533bc5019f`). The exact diff is
 `patches/0001-rever-changes-to-linux-v7.2-iris.patch`; in the source each change is marked `Rever lab`.
 Every other `iris_*` file is upstream v7.2 byte for byte (`module/provenance.json` holds their SHA-256).
 
-Los archivos de abajo los cambió Rever VR (del 2026-11-02 al 2026-11-04) a partir del
+Los archivos de abajo los cambió Rever VR (del 2026-11-02 al 2026-11-07) a partir del
 `drivers/media/platform/qcom/iris` de Linux v7.2. El diff exacto está en
 `patches/0001-rever-changes-to-linux-v7.2-iris.patch`; en el código, cada cambio lleva la marca `Rever lab`.
 
@@ -20,7 +20,7 @@ Los archivos de abajo los cambió Rever VR (del 2026-11-02 al 2026-11-04) a part
 | `iris_platform_vpu3x.c` | SM8650 firmware name: the Frame's own `qcom/vpu/vpu33_4v.mbn`. | 2026-11-02 |
 | `iris_vpu3x.c` | A timed-out controller power-off handshake logged (the clock is left on). | 2026-11-02 (v7.4/v7.5) |
 | `iris_power.c` | Module parameters `max_clock`, `rever_clock_margin`, `rever_vr_fps`: the clock and DDR vote for VR bitrates. | 2026-11-02, 2026-11-03 |
-| `iris_probe.c` | Module parameters `arm_av1_lab` (AV1 off unless set) and `rever_let_go`; probe limited to the Frame kernels it was checked on (6.18.0-g83913f38113c, 7.2.0-g9a8c8ea46950); no modalias, so it is never loaded automatically. | 2026-11-02, 2026-11-04 (v7.8) |
+| `iris_probe.c` | Module parameters `arm_av1_lab` (AV1 off unless set) and `rever_let_go`; probe limited to the Frame kernels it was checked on (6.18.0-g83913f38113c, 7.2.0-g9a8c8ea46950, 7.2.0-g344f27110f05); no modalias, so it is never loaded automatically. | 2026-11-02, 2026-11-04 (v7.8), 2026-11-07 (v7.8.1) |
 | `iris_resources.c` | A clock already enabled by the previous driver is not an error. | 2026-11-02 |
 | `iris_vdec.c` | `rever_rate_floor_pct`: the measured rate never below a share of its peak; repeated `S_FMT` after `STREAMOFF` accepted. | 2026-11-03 (v7.7) |
 | `iris_vidc.c` | V4L2 card names `iris_decoder` / `iris_encoder`, as the Frame's stock driver reports them. | 2026-11-02 |

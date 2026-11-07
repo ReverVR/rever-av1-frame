@@ -364,7 +364,7 @@ diff -ruN a/iris_probe.c b/iris_probe.c
  
  	video_unregister_device(core->vdev_dec);
  	video_unregister_device(core->vdev_enc);
-@@ -219,6 +231,47 @@
+@@ -219,6 +231,49 @@
  	iris_core_init(core);
  }
  
@@ -394,12 +394,14 @@ diff -ruN a/iris_probe.c b/iris_probe.c
 +MODULE_PARM_DESC(rever_let_go, "Rever lab: 1 lets a power-collapsed core go before rmmod");
 +
 +/* Rever lab v7.8: the Frame kernels this module was checked on (their headers fit it, Valve's iris the same under
-+ * both): any other fails closed until it is checked */
++ * both): any other fails closed until it is checked. v7.8.1 (2026-11-07): SteamOS 0.5.8's 344f2711 - nothing
++ * under drivers/media or include changed since 9a8c8ea4 */
 +static bool frame_av1_kernel_checked(void)
 +{
 +	static const char *const checked[] = {
 +		"6.18.0-g83913f38113c",	/* SteamOS 0.5.6 */
 +		"7.2.0-g9a8c8ea46950",	/* SteamOS 0.5.7 */
++		"7.2.0-g344f27110f05",	/* SteamOS 0.5.8 */
 +	};
 +	size_t i;
 +
@@ -412,7 +414,7 @@ diff -ruN a/iris_probe.c b/iris_probe.c
  static int iris_probe(struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -226,6 +279,11 @@
+@@ -226,6 +281,11 @@
  	u64 dma_mask;
  	int ret;
  
@@ -424,7 +426,7 @@ diff -ruN a/iris_probe.c b/iris_probe.c
  	core = devm_kzalloc(&pdev->dev, sizeof(*core), GFP_KERNEL);
  	if (!core)
  		return -ENOMEM;
-@@ -302,6 +360,8 @@
+@@ -302,6 +362,8 @@
  	if (ret)
  		goto err_vdev_unreg_enc;
  
@@ -433,7 +435,7 @@ diff -ruN a/iris_probe.c b/iris_probe.c
  	return 0;
  
  err_vdev_unreg_enc:
-@@ -390,13 +450,13 @@
+@@ -390,13 +452,13 @@
  	},
  	{ },
  };

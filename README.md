@@ -11,6 +11,18 @@ This repository is the complete corresponding source of what Rever VR Central 0.
 build is made **on the Frame itself** from these files (`helper/rever-av1 build`), against the running kernel's own
 headers; Rever does not distribute a prebuilt `.ko`.
 
+## Version
+
+Current: **v7.8.1** (2026-11-07), shipped by Rever VR Central 0.71. The module loads only on a kernel it was checked
+on: SteamOS 0.5.6 (`6.18.0-g83913f38113c`), 0.5.7 (`7.2.0-g9a8c8ea46950`) and 0.5.8 (`7.2.0-g344f27110f05`); any
+other fails closed. Full detail in `REVER_CHANGES.md`.
+
+- **v7.8.1** (2026-11-07): adds SteamOS 0.5.8's kernel `7.2.0-g344f27110f05` to the checked list (`iris_probe.c`
+  only). Valve's iris, the build headers and `v4l2-mem2mem.c` are byte-for-byte unchanged since 0.5.7, so there was
+  nothing else to port.
+- **v7.8** (2026-11-04): port to Linux kernel 7.2 (the module is upstream iris at v7.2; the 6.18 backports become
+  no-ops).
+
 ## Licence
 
 - `module/`: **GPL-2.0-only** (see `COPYING`). Every source file keeps its upstream SPDX header and copyright
@@ -75,6 +87,17 @@ Rever está abierta y, al cerrarla, vuelve el driver de Valve. Nunca se carga al
 Este repositorio es el código fuente correspondiente completo de lo que Rever VR Central 0.71 lleva al visor. El módulo
 se compila **en el propio Frame** a partir de estos archivos (`helper/rever-av1 build`), con las cabeceras del núcleo
 que esté en marcha; Rever no distribuye ningún `.ko` ya compilado.
+
+### Versión
+
+Actual: **v7.8.1** (2026-11-07), la que lleva Rever VR Central 0.71. El módulo solo carga en un núcleo comprobado:
+SteamOS 0.5.6 (`6.18.0-g83913f38113c`), 0.5.7 (`7.2.0-g9a8c8ea46950`) y 0.5.8 (`7.2.0-g344f27110f05`); cualquier otro
+se niega. Detalle en `REVER_CHANGES.md`.
+
+- **v7.8.1** (2026-11-07): añade a la lista comprobada el núcleo `7.2.0-g344f27110f05` de SteamOS 0.5.8 (solo
+  `iris_probe.c`). El iris de Valve, las cabeceras y `v4l2-mem2mem.c` no cambiaron desde la 0.5.7: no había nada más
+  que portar.
+- **v7.8** (2026-11-04): port al núcleo Linux 7.2 (el módulo es el iris de upstream en v7.2).
 
 ### Licencia
 

@@ -257,12 +257,14 @@ module_param_cb(rever_let_go, &rever_let_go_ops, NULL, 0200);
 MODULE_PARM_DESC(rever_let_go, "Rever lab: 1 lets a power-collapsed core go before rmmod");
 
 /* Rever lab v7.8: the Frame kernels this module was checked on (their headers fit it, Valve's iris the same under
- * both): any other fails closed until it is checked */
+ * both): any other fails closed until it is checked. v7.8.1 (2026-11-07): SteamOS 0.5.8's 344f2711 - nothing
+ * under drivers/media or include changed since 9a8c8ea4 */
 static bool frame_av1_kernel_checked(void)
 {
 	static const char *const checked[] = {
 		"6.18.0-g83913f38113c",	/* SteamOS 0.5.6 */
 		"7.2.0-g9a8c8ea46950",	/* SteamOS 0.5.7 */
+		"7.2.0-g344f27110f05",	/* SteamOS 0.5.8 */
 	};
 	size_t i;
 
